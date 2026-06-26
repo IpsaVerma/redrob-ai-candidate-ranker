@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
+import io
 
 # ---------------- PAGE SETTINGS ----------------
 
@@ -27,7 +28,6 @@ st.divider()
 
 @st.cache_data
 def load_data():
-
     file_path = "data/final_ranked_candidates.csv"
 
     if os.path.exists(file_path):
@@ -37,6 +37,17 @@ def load_data():
 
 
 df = load_data()
+
+# ---------------- EXCEL EXPORT FUNCTION ----------------
+
+def to_excel_bytes(dataframe):
+    output = io.BytesIO()
+
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        dataframe.to_excel(writer, index=False, sheet_name='Ranked Candidates')
+
+    output.seek(0)
+    return output
 
 # ---------------- MAIN DASHBOARD ----------------
 
@@ -50,25 +61,13 @@ if df is not None:
 
     top_candidate = df.iloc[0]
 
-    col1.metric(
-        "Candidates Processed",
-        len(df)
-    )
+    col1.metric("Candidates Processed", len(df))
 
-    col2.metric(
-        "Top Candidate",
-        top_candidate["name"]
-    )
+    col2.metric("Top Candidate", top_candidate["name"])
 
-    col3.metric(
-        "Hybrid Score",
-        f"{top_candidate['final_score']*100:.1f}%"
-    )
+    col3.metric("Hybrid Score", f"{top_candidate['final_score']*100:.1f}%")
 
-    col4.metric(
-        "Semantic Match",
-        f"{top_candidate['semantic_score']*100:.1f}%"
-    )
+    col4.metric("Semantic Match", f"{top_candidate['semantic_score']*100:.1f}%")
 
     st.divider()
 
@@ -76,19 +75,13 @@ if df is not None:
 
     st.subheader("🔍 Search Candidate")
 
-    search = st.text_input(
-        "Enter candidate name"
-    )
+    search = st.text_input("Enter candidate name")
 
     filtered_df = df.copy()
 
     if search:
         filtered_df = df[
-            df["name"].str.contains(
-                search,
-                case=False,
-                na=False
-            )
+            df["name"].str.contains(search, case=False, na=False)
         ]
 
     # ---------------- TABLE FORMATTING ----------------
@@ -97,44 +90,30 @@ if df is not None:
 
     display_df = filtered_df.copy()
 
-    display_df["final_score"] = (
-        display_df["final_score"]*100
-    ).round(2).astype(str)+"%"
+    display_df["final_score"] = (display_df["final_score"] * 100).round(2).astype(str) + "%"
+    display_df["semantic_score"] = (display_df["semantic_score"] * 100).round(2).astype(str) + "%"
+    display_df["response_rate"] = (display_df["response_rate"] * 100).round(0).astype(str) + "%"
 
-    display_df["semantic_score"] = (
-        display_df["semantic_score"]*100
-    ).round(2).astype(str)+"%"
+    display_df = display_df.rename(columns={
+        "rank": "Rank",
+        "candidate_id": "Candidate ID",
+        "name": "Candidate Name",
+        "final_score": "Hybrid Score",
+        "semantic_score": "Semantic Match",
+        "response_rate": "Response Rate"
+    })
 
-    display_df["response_rate"] = (
-        display_df["response_rate"]*100
-    ).round(0).astype(str)+"%"
-
-    display_df = display_df.rename(
-        columns={
-            "rank":"Rank",
-            "candidate_id":"Candidate ID",
-            "name":"Candidate Name",
-            "final_score":"Hybrid Score",
-            "semantic_score":"Semantic Match",
-            "response_rate":"Response Rate"
-        }
-    )
-
-    st.dataframe(
-        display_df,
-        use_container_width=True,
-        hide_index=True
-    )
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
 
     st.divider()
 
-    # ---------------- DOWNLOAD BUTTON ----------------
+    # ---------------- DOWNLOAD BUTTON (XLSX FIXED) ----------------
 
     st.download_button(
-        label="📥 Download Ranked Candidates",
-        data=df.to_csv(index=False),
-        file_name="final_ranked_candidates.csv",
-        mime="text/csv"
+        label="📥 Download Ranked Candidates (XLSX)",
+        data=to_excel_bytes(df),
+        file_name="ranked_candidates.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
     st.divider()
@@ -145,13 +124,9 @@ if df is not None:
 
     top5 = df.head(5)
 
-    fig, ax = plt.subplots(figsize=(16,8))
+    fig, ax = plt.subplots(figsize=(16, 8))
 
-    ax.bar(
-        top5["name"],
-        top5["final_score"]
-    )
-
+    ax.bar(top5["name"], top5["final_score"])
     ax.set_title("Top 5 Candidate Scores")
     ax.set_xlabel("Candidates")
     ax.set_ylabel("Hybrid Score")
@@ -166,52 +141,42 @@ if df is not None:
 
     st.subheader("🧠 Why Candidate Ranked #1")
 
-    st.write(
-        f"""
+    st.write(f"""
 ### {top_candidate['name']}
 
 This candidate ranked first because:
 
-✅ Strong semantic similarity with Job Description
+✅ Strong semantic similarity with Job Description  
+✅ Better recruiter response rate  
+✅ Positive behavioral indicators  
+✅ Highest overall hybrid score  
 
-✅ Better recruiter response rate
-
-✅ Positive behavioral indicators
-
-✅ Highest overall hybrid score
-
-Hybrid Score: **{top_candidate['final_score']*100:.2f}%**
-
+Hybrid Score: **{top_candidate['final_score']*100:.2f}%**  
 Semantic Match: **{top_candidate['semantic_score']*100:.2f}%**
-"""
-    )
+""")
 
-    st.success(
-        "✅ Dashboard loaded successfully!"
-    )
+    st.success("✅ Dashboard loaded successfully!")
 
 else:
 
-    st.error(
-        "❌ Could not find final_ranked_candidates.csv"
-    )
+    st.error("❌ Could not find final_ranked_candidates.csv")
 
-    st.info(
-        "Make sure the file exists in:\n\n data/final_ranked_candidates.csv"
-    )
-    
+    st.info("Make sure the file exists in: data/final_ranked_candidates.csv")
+
+# ---------------- SIDEBAR ----------------
+
 st.sidebar.title("Project Details")
 
 st.sidebar.info("""
 AI Resume Ranker
 
 Tech Stack:
-• Python
-• Streamlit
-• Pandas
-• Sentence Transformers
-• NumPy
-• Scikit-learn
+• Python  
+• Streamlit  
+• Pandas  
+• Sentence Transformers  
+• NumPy  
+• Scikit-learn  
 
 Method:
 Hybrid Ranking System
